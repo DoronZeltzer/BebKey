@@ -1,0 +1,41 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /profile
+Disallow: /submit
+Disallow: /checkout/success
+Disallow: /checkout/cancel
+Disallow: /admin
+Disallow: /auth/
+
+# Sitemap index — discovers /sitemap-listings.xml, /sitemap-landings.xml,
+# /sitemap-static.xml, /sitemap-cities.xml, /sitemap-blog.xml.
+Sitemap: https://www.bebkey.com/sitemap.xml
+
+# RSS feed for content aggregators (Feedly, Telegram RSS bots, etc.)
+# Not strictly a robots.txt directive but search engines pick it up here.
+# (RSS feed itself is linked from <head> in index.html.)
+
+# AI search crawlers explicitly allowed — every mention of BebKey on
+# ChatGPT, Claude, or Perplexity is a referral channel that grows the
+# audience.  These bots are all polite and respect Crawl-delay.
+User-agent: GPTBot
+Allow: /
+
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: ClaudeBot
+Allow: /
+
+User-agent: Claude-Web
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Google-Extended
+Allow: /

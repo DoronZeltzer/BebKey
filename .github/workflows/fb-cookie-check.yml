@@ -1,0 +1,44 @@
+# Fast Facebook cookie validity check.
+#
+# Trigger manually with `gh workflow run fb-cookie-check.yml` to verify that
+# FACEBOOK_COOKIES + APIFY_API_KEY produce a logged-in m.facebook.com session
+# WITHOUT waiting for the full scraper pipeline (which takes ~60 min to reach
+# the Facebook Groups step).
+#
+# Run time: ~3 minutes (mostly Playwright install).
+
+name: FB cookie check
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_proxy:
+        description: "Bypass Apify proxy (direct CI → FB) to isolate proxy vs cookie failures"
+        type: boolean
+        default: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Playwright + Chromium
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Check Facebook cookies
+        env:
+          FACEBOOK_COOKIES:    ${{ secrets.FACEBOOK_COOKIES }}
+          WEBSHARE_PROXY_HOST: ${{ secrets.WEBSHARE_PROXY_HOST }}
+          WEBSHARE_PROXY_USER: ${{ secrets.WEBSHARE_PROXY_USER }}
+          WEBSHARE_PROXY_PASS: ${{ secrets.WEBSHARE_PROXY_PASS }}
+          SKIP_PROXY:          ${{ inputs.skip_proxy && '1' || '' }}
+        run: python scrapers/fb_cookie_check.py

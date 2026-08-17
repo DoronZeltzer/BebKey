@@ -1,0 +1,82 @@
+name: FB scrapers (manual test)
+
+# Fast, manual-only loop for iterating the Facebook scrapers (Groups +
+# Marketplace) without waiting on the ~90-min heavy pipeline. Runs both,
+# then uploads their logs as an artifact so we can see card/post counts and
+# the per-category diagnostics.
+
+on:
+  workflow_dispatch:
+    inputs:
+      which:
+        description: "which FB scraper(s) to run"
+        type: choice
+        default: both
+        options: [both, marketplace, groups]
+      use_proxy:
+        description: "route through the Webshare proxy?"
+        type: choice
+        default: "yes"
+        options: ["yes", "no"]
+
+env:
+  SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+  SENTRY_ENV: production
+
+jobs:
+  fb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Python packages
+        run: pip install -r scrapers/requirements.txt
+      - name: Install Playwright Chromium + OS deps
+        timeout-minutes: 8
+        run: python -m playwright install --with-deps chromium
+      - name: Install Xvfb
+        run: sudo apt-get install -y xvfb
+
+      - name: Facebook Marketplace
+        if: ${{ inputs.which == 'both' || inputs.which == 'marketplace' }}
+        continue-on-error: true
+        timeout-minutes: 20
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          FACEBOOK_COOKIES: ${{ secrets.FACEBOOK_COOKIES }}
+          FB_MARKETPLACE_LOCATIONS: ${{ secrets.FB_MARKETPLACE_LOCATIONS }}
+          WEBSHARE_PROXY_HOST: ${{ inputs.use_proxy == 'yes' && secrets.WEBSHARE_PROXY_HOST || '' }}
+          WEBSHARE_PROXY_USER: ${{ inputs.use_proxy == 'yes' && secrets.WEBSHARE_PROXY_USER || '' }}
+          WEBSHARE_PROXY_PASS: ${{ inputs.use_proxy == 'yes' && secrets.WEBSHARE_PROXY_PASS || '' }}
+          FB_MAX_ITEMS_PER_CATEGORY: "60"
+          DISPLAY: ":99"
+        run: xvfb-run --auto-servernum python scrapers/facebook_marketplace_scraper.py
+
+      - name: Facebook Groups
+        if: ${{ inputs.which == 'both' || inputs.which == 'groups' }}
+        continue-on-error: true
+        timeout-minutes: 20
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          FACEBOOK_COOKIES: ${{ secrets.FACEBOOK_COOKIES }}
+          FACEBOOK_GROUP_IDS: ${{ secrets.FACEBOOK_GROUP_IDS }}
+          WEBSHARE_PROXY_HOST: ${{ inputs.use_proxy == 'yes' && secrets.WEBSHARE_PROXY_HOST || '' }}
+          WEBSHARE_PROXY_USER: ${{ inputs.use_proxy == 'yes' && secrets.WEBSHARE_PROXY_USER || '' }}
+          WEBSHARE_PROXY_PASS: ${{ inputs.use_proxy == 'yes' && secrets.WEBSHARE_PROXY_PASS || '' }}
+          FB_MAX_POSTS_PER_GROUP: "30"
+          DISPLAY: ":99"
+        run: xvfb-run --auto-servernum python scrapers/facebook_groups_scraper.py
+
+      - name: Upload FB logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fb-logs-${{ github.run_id }}
+          path: |
+            scrapers/facebook_marketplace_log.txt
+            scrapers/facebook_groups_log.txt

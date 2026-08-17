@@ -1,0 +1,51 @@
+name: Weekly DB Cleanup
+
+# Runs every Sunday at 03:00 UTC (06:00 IL) - physically deletes inactive
+# listings older than HARD_DELETE_AFTER_DAYS (default 60).
+#
+# Kept in a separate workflow so the daily scraper run can't accidentally
+# trigger a hard delete (e.g. on workflow_dispatch), and so it has its own
+# success/failure history in the Actions tab.
+
+on:
+  schedule:
+    - cron: '0 3 * * 0'   # Sunday 06:00 Israel time
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (count only, don't delete)"
+        required: false
+        default: "false"
+      days_threshold:
+        description: "Delete inactive listings older than N days"
+        required: false
+        default: "60"
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: pip install httpx python-dotenv
+
+      - name: Hard-delete old inactive listings
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          HARD_DELETE_AFTER_DAYS: ${{ github.event.inputs.days_threshold || '60' }}
+          HARD_DELETE_DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '1' || '' }}
+        run: python scrapers/hard_delete_old.py
+
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hard-delete-log-${{ github.run_id }}
+          path: scrapers/hard_delete_log.txt
+          if-no-files-found: warn
+          retention-days: 90

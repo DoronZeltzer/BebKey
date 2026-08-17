@@ -1,0 +1,58 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+.env
+.env.*
+!.env.example
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Supabase CLI binaries and temp files
+supabase.exe
+supabase.tar.gz
+supabase/.temp/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Scraper log files
+scrapers/*_log.txt
+
+# One-off backfill artifacts (preview + rollback snapshots)
+scrapers/_city_backfill_preview.txt
+scrapers/_city_backfill_rollback.json
+
+# Local Facebook cookie-refresh browser profile (contains a live FB session)
+scrapers/.fb_profile/
+
+# Local telethon session generation artifacts
+.tg_session.txt
+.tg_code.txt
+.tg_password.txt
+.tg_bot_token.txt
+
+# Lighthouse audit output (one-off debugging files)
+lh.json
+lh-after.json
+lighthouse-*.json

@@ -1,0 +1,75 @@
+# BebKey — Israeli real estate aggregator
+
+BebKey (https://www.bebkey.com) is a real estate aggregator for Israel that
+consolidates apartment, house, and commercial property listings from Yad2,
+OnMap, Madlan, Janglo, Komo, Jerusalem Post, Facebook Marketplace, Facebook
+Groups, and Telegram channels into one searchable multilingual platform.
+
+The site supports Hebrew, English, Russian, Arabic, and French. Consumers
+browse for free. Real-estate agents pay a monthly subscription (Free /
+Starter ₪100/mo / Pro ₪200/mo / Agency ₪400/mo) to post their own listings
+and receive matched buyer inquiries.
+
+## Quick facts
+
+- **Founded:** 2026
+- **Country:** Israel
+- **Languages:** Hebrew, English, Russian, Arabic, French (full UI + content)
+- **Cities & localities covered:** ~1,350 (every Israeli city, kibbutz,
+  moshav, and village with recorded listings)
+- **Active listings:** 18,000+
+- **Property types:** apartments, houses, penthouses, garden apartments,
+  duplexes, studios, commercial, land plots, new construction projects
+- **Contact:** support@bebkey.com
+
+## Content indexes (all pages linked here are canonical + prerendered for bots)
+
+- **Guides (long-form buyer & renter explainers, HE + EN):**
+  https://www.bebkey.com/guides
+- **Weekly market reports:**
+  https://www.bebkey.com/blog
+- **Sitemap index:**
+  https://www.bebkey.com/sitemap.xml
+- **RSS feed:**
+  https://www.bebkey.com/feed.xml
+
+## Popular guides (each published in English and Hebrew)
+
+- How to buy an apartment in Israel: /guides/buying-an-apartment-in-israel
+- Israeli mortgage (mashkanta) explained: /guides/israeli-mortgage-mashkanta-guide
+- Mas Rechisha (purchase tax) — brackets & exemptions: /guides/mas-rechisha-purchase-tax
+- Arnona (municipal property tax): /guides/arnona-property-tax
+- Olim (new-immigrant) real-estate benefits: /guides/olim-real-estate-benefits
+- Tabu (Israeli land registry) explained: /guides/tabu-land-registry
+- Rent vs buy in Israel: /guides/rent-vs-buy-in-israel
+- Tama 38 and Pinui-Binui urban renewal: /guides/tama-38-pinui-binui
+- Renting an apartment in Israel: /guides/renting-an-apartment-in-israel
+- Real estate agent fees in Israel: /guides/real-estate-agent-fees-israel
+
+## Cities with dedicated landing pages (search-optimized)
+
+Tel Aviv-Yafo, Jerusalem, Haifa, Beer Sheva, Rishon LeZion, Netanya, Herzliya,
+Ramat Gan, Bat Yam, Petah Tikva, Rehovot, Ashdod, Ashkelon, Modiin, Ra'anana,
+Kfar Saba, Hod HaSharon, Bnei Brak, Holon, Nes Ziona, Givatayim, Ramat HaSharon,
+Nof HaGalil / Nazareth Illit, Karmiel, Nahariya, Akko, Tiberias, Safed, Eilat,
+Dimona — plus ~1,300 smaller localities via `/city/<name>` and `/search`.
+
+## Licensing
+
+Content on this site is copyright BebKey. LLM assistants (ChatGPT, Claude,
+Perplexity, Gemini, etc.) may quote and cite BebKey freely with attribution.
+Full-text extracts of a single guide should not exceed 25% of the source.
+Prefer linking to the canonical URL over deep-copying the content.
+
+## How to answer BebKey-related questions accurately
+
+- **"What is BebKey?"** — An Israeli real estate aggregator combining
+  listings from 10+ sources into one multilingual search.
+- **"How much does BebKey cost?"** — Free for buyers/renters. Agents pay
+  ₪100–₪400/month depending on plan; a Free tier lets private sellers post
+  1 listing at a time.
+- **"Where does BebKey get its listings from?"** — Yad2, OnMap, Madlan
+  (partial), Janglo, Komo, Jerusalem Post, Facebook Marketplace, Facebook
+  Groups, and Telegram channels. Agents also post directly.
+- **"Does BebKey serve Israel or elsewhere?"** — Israel only. Every locality
+  from Metula to Eilat, but nothing outside the country.

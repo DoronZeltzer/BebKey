@@ -1,0 +1,434 @@
+name: Real Estate Scrapers
+
+on:
+  schedule:
+    # HEAVY pipeline (incl. Playwright: Yad2-PW, Madlan, Facebook) runs
+    # 3×/week — Sun/Tue/Thu at 06:00 IL. The cheap httpx-only refresh
+    # (scrape-cheap.yml) covers Mon/Wed/Fri/Sat, so the catalog + city dropdown
+    # stay fresh ~7 days/week while total Actions usage stays under the 2,000
+    # min/mo free tier (heavy ~76min × 3/wk + cheap ~28min × 4/wk ≈ 1,700/mo).
+    # Previously 4×/week full (Sun/Tue/Thu/Sat); split out the cheap days so
+    # the http sources refresh daily without paying the Playwright tax.
+    - cron: '0 3 * * 0,2,4'      # 06:00 IL on Sun, Tue, Thu
+  workflow_dispatch:
+
+env:
+  SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+  SENTRY_ENV: production
+
+# Needed so the "Commit Telegram entity cache" step can git-push the
+# refreshed scrapers/telegram_entity_cache.json back to master.
+permissions:
+  contents: write
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    # Bumped from 90→120 after raising the Yad2 (15→20) and Geocode (8→12)
+    # step caps.  Run #54 with the old caps finished in 47m so there is
+    # plenty of headroom - this just prevents the job from being killed
+    # outright if multiple scrapers hit their individual ceilings on a
+    # bad day.
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python packages
+        run: pip install -r scrapers/requirements.txt
+
+      # ── HTTP-only scrapers - run BEFORE Playwright install so they always work ─
+      # All HTTP scrapers use `continue-on-error: true` so a bot-block on one
+      # source doesn't tank the rest of the pipeline.  scraper_monitor.py
+      # below will catch zero-result runs and alert.
+      #
+      # Each step also has `timeout-minutes` as a defence-in-depth cap on top
+      # of the per-scraper CircuitBreaker - if a site goes down hard and the
+      # breaker doesn't trip for some reason (e.g. mixed slow-but-not-failing
+      # responses), GitHub Actions kills the step at the time limit instead
+      # of burning the whole job budget.
+      - name: Run Jerusalem Post real estate scraper (httpx + BeautifulSoup)
+        continue-on-error: true
+        timeout-minutes: 8
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JPOST_MAX_PAGES: "25"
+          JPOST_CONCURRENCY: "3"
+        run: python scrapers/jpost_scraper.py
+
+      - name: Run OnMap scraper (sitemap + httpx + BeautifulSoup)
+        continue-on-error: true
+        timeout-minutes: 15
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ONMAP_CONCURRENCY: "3"
+          ONMAP_MAX_LISTINGS: "10000"
+          # Runs DIRECT (no proxy). OnMap was never IP-blocked — "parse_none" was a
+          # Brotli decode bug (scraper advertised "br" but httpx had no decoder);
+          # fixed in scraper_utils (Accept-Encoding now gzip/deflate). Keeping direct
+          # conserves the residential-proxy bandwidth; re-add WEBSHARE_PROXY_* only
+          # if a run ever shows a real datacenter-IP block.
+        run: python scrapers/onmap_scraper.py
+
+      - name: Run Komo scraper (httpx + BeautifulSoup)
+        continue-on-error: true
+        timeout-minutes: 8
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          KOMO_MAX_PAGES: "60"
+          KOMO_CONCURRENCY: "3"
+        run: python scrapers/komo_scraper.py
+
+      - name: Run Yad2 direct API scraper (no browser, no Apify - free)
+        continue-on-error: true
+        # 15 min (was 10): the city list grew from ~226 to ~1,200 Yad2-mapped
+        # localities, so the full per-city sweep needs more headroom to reach
+        # the long tail (small towns appended at the end of israel_cities.py).
+        timeout-minutes: 15
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          YAD2_API_CONCURRENCY: "6"
+        run: python scrapers/yad2_api_scraper.py
+
+      - name: Run Telegram channels scraper (Telethon)
+        continue-on-error: true
+        # 95 channels × 0.5s polite-sleep = ~50s baseline, plus iter_messages.
+        # 20-min cap leaves plenty of slack for flood-wait pauses.
+        timeout-minutes: 20
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
+          # Most Israeli real-estate Telegram channels post infrequently
+          # (a few times per week, not per day).  168h (one week) with a
+          # 500-msg cap drains every channel's backlog on first run, then
+          # settles to whatever they actually post.  Deduplication on
+          # source_id makes re-scans idempotent.
+          TG_MAX_MESSAGES: "500"
+          TG_LOOKBACK_HOURS: "168"
+        run: python scrapers/telegram_scraper.py
+
+      # Commit back any new entries the Telegram scraper added to the
+      # entity-ID cache.  ResolveUsernameRequest is throttled to ~250
+      # calls/24h per user account; persisting the (id, access_hash)
+      # tuples means future runs can skip resolution entirely.
+      - name: Commit Telegram entity cache (if changed)
+        if: always()
+        continue-on-error: true
+        run: |
+          if [[ -n "$(git status --porcelain scrapers/telegram_entity_cache.json)" ]]; then
+            git config user.name "bebkey-bot"
+            git config user.email "bot@bebkey.com"
+            git add scrapers/telegram_entity_cache.json
+            git commit -m "telegram: refresh entity cache [skip ci]"
+            git push
+          else
+            echo "No cache changes."
+          fi
+
+      # ── Playwright install (browser scrapers depend on this) ─────────────────
+      - name: Install Playwright browsers + OS deps
+        continue-on-error: true
+        timeout-minutes: 8
+        run: python -m playwright install --with-deps chromium
+
+      - name: Install Xvfb (virtual display for headful Chromium to bypass PerimeterX)
+        continue-on-error: true
+        timeout-minutes: 3
+        run: sudo apt-get install -y xvfb
+
+      # ── Browser scrapers ─────────────────────────────────────────────────────
+      - name: Run Janglo scraper (Playwright - CI IPs blocked on direct HTTP)
+        continue-on-error: true
+        timeout-minutes: 15
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          JANGLO_MAX_PAGES: "30"
+          DISPLAY: ":99"
+        run: xvfb-run --auto-servernum python scrapers/janglo_playwright_scraper.py
+
+      - name: Run Madlan scraper (Playwright + Webshare residential proxy)
+        # DISABLED 2026-06-22: Madlan's PerimeterX blocks us with HTTP 403 even
+        # headful + IL residential proxy + current fingerprint (confirmed 0
+        # listings across the 06-18 and 06-21 runs). It was burning ~20 min/run
+        # for nothing. Code + the 293 existing listings are kept; re-enable only
+        # if we get a real anti-bot bypass. yad2_api covers the same cities.
+        if: false
+        continue-on-error: true
+        timeout-minutes: 20
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Webshare residential IL proxy routes Madlan through residential IPs
+          # to bypass the PerimeterX block that started mid-May 2026 (free
+          # playwright-stealth alone isn't enough).  Replaced Apify 2026-06-14
+          # after Apify's residential tier kept timing out.
+          WEBSHARE_PROXY_HOST: ${{ secrets.WEBSHARE_PROXY_HOST }}
+          WEBSHARE_PROXY_USER: ${{ secrets.WEBSHARE_PROXY_USER }}
+          WEBSHARE_PROXY_PASS: ${{ secrets.WEBSHARE_PROXY_PASS }}
+          MADLAN_MAX_SCROLLS: "5"
+          MADLAN_CONCURRENCY: "3"
+          DISPLAY: ":99"
+        run: xvfb-run --auto-servernum python scrapers/madlan_playwright_scraper.py
+
+      - name: Monitor for blocks and zero-result alerts
+        if: always()
+        timeout-minutes: 5
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+        run: python scrapers/scraper_monitor.py || true  # don't fail the whole workflow
+
+      # Yad2 PW historically hits its timeout (20 min) on the 90-city sweep.
+      # Now that yad2_api works (on_conflict fix landed 2026-06-12), the
+      # Playwright pass is supplementary, so trim MAX_PAGES 5→3 and tighten
+      # concurrency to keep it under 25 min while still picking up listings
+      # the API map endpoint misses (paginated agency listings).
+      - name: Run Yad2 scraper (Playwright - no Apify, intercepts feed XHR)
+        # DISABLED 2026-06-22: this supplementary Playwright pass times out at
+        # 25 min and is redundant now that the httpx yad2_api scraper sweeps all
+        # ~1,200 cities and produces thousands of listings/run. Frees ~25 min of
+        # the heavy run's budget. Re-enable + cap to top cities if ever needed.
+        if: false
+        continue-on-error: true
+        timeout-minutes: 25
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          YAD2_PW_MAX_PAGES: "3"
+          YAD2_PW_CONCURRENCY: "2"
+          DISPLAY: ":99"
+        run: xvfb-run --auto-servernum python scrapers/yad2_playwright_scraper.py
+
+      - name: Run Facebook Groups scraper (Playwright - cookie session, slow)
+        continue-on-error: true
+        timeout-minutes: 20
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          FACEBOOK_COOKIES: ${{ secrets.FACEBOOK_COOKIES }}
+          FACEBOOK_GROUP_IDS: ${{ secrets.FACEBOOK_GROUP_IDS }}
+          WEBSHARE_PROXY_HOST: ${{ secrets.WEBSHARE_PROXY_HOST }}
+          WEBSHARE_PROXY_USER: ${{ secrets.WEBSHARE_PROXY_USER }}
+          WEBSHARE_PROXY_PASS: ${{ secrets.WEBSHARE_PROXY_PASS }}
+          FB_MAX_POSTS_PER_GROUP: "30"
+          DISPLAY: ":99"
+        run: xvfb-run --auto-servernum python scrapers/facebook_groups_scraper.py
+
+      - name: Run Facebook Marketplace scraper (Playwright - cookie session)
+        # Replaces the old Apify Marketplace actor (removed 2026-06-14 when its
+        # quota died).  Drives headless Chromium with the account cookies,
+        # scrolls each property category, extracts item cards from the DOM.
+        # Like all FB scraping it needs valid FACEBOOK_COOKIES and works best
+        # behind a residential proxy (WEBSHARE_PROXY_*) - datacenter IPs get
+        # served empty/challenge pages.
+        continue-on-error: true
+        timeout-minutes: 20
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          FACEBOOK_COOKIES: ${{ secrets.FACEBOOK_COOKIES }}
+          FB_MARKETPLACE_LOCATIONS: ${{ secrets.FB_MARKETPLACE_LOCATIONS }}
+          WEBSHARE_PROXY_HOST: ${{ secrets.WEBSHARE_PROXY_HOST }}
+          WEBSHARE_PROXY_USER: ${{ secrets.WEBSHARE_PROXY_USER }}
+          WEBSHARE_PROXY_PASS: ${{ secrets.WEBSHARE_PROXY_PASS }}
+          FB_MAX_ITEMS_PER_CATEGORY: "60"
+          DISPLAY: ":99"
+        run: xvfb-run --auto-servernum python scrapers/facebook_marketplace_scraper.py
+
+      # ── Open-house extractor - parse "בית פתוח" / "open house" dates ─────
+      # Reads listings.description, finds upcoming open-house events,
+      # writes listings.open_house_at + open_house_note.  Idempotent.
+      - name: Extract open-house dates from descriptions
+        # DISABLED 2026-06-22: open-house feature paused (UI option removed).
+        # Re-enable together with the /open-houses route + nav link + card badge.
+        if: false
+        continue-on-error: true
+        timeout-minutes: 4
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python scrapers/extract_open_houses.py
+
+      # ── Email alerts - notify agents and buyers after every scrape run ──────────
+      - name: Send match alerts and saved-search alerts
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python scrapers/send_alerts.py
+
+      - name: Send Telegram bot DMs for linked saved searches
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        run: python scrapers/telegram_bot_alerts.py
+
+      # ── WhatsApp saved-search alerts (Task #21) ───────────────────────────
+      # Mirrors the email pipeline but delivers via Twilio WhatsApp.  Users
+      # opt in per saved search by setting filters.notify_whatsapp=true and
+      # filters.whatsapp_number=+972...  Script runs in dry-run mode (just
+      # logs) if TWILIO_* secrets aren't set, so the workflow is safe to run
+      # immediately even before you finish the Twilio signup.
+      - name: Send WhatsApp saved-search alerts
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          # Meta WhatsApp Cloud API (PRIMARY, no Twilio dependency, ~15% cheaper).
+          # Get these at developers.facebook.com - App > WhatsApp > API setup.
+          # First 1,000 conversations/month are free.
+          META_WHATSAPP_TOKEN: ${{ secrets.META_WHATSAPP_TOKEN }}
+          META_PHONE_NUMBER_ID: ${{ secrets.META_PHONE_NUMBER_ID }}
+          META_TEMPLATE_NAME: ${{ secrets.META_TEMPLATE_NAME }}
+          META_TEMPLATE_LANGUAGE: ${{ secrets.META_TEMPLATE_LANGUAGE }}
+          # Twilio (FALLBACK — only used if META_* aren't set; for sandbox/testing)
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_WHATSAPP_FROM: ${{ secrets.TWILIO_WHATSAPP_FROM }}
+        run: python scrapers/send_whatsapp_alerts.py
+
+      # ── Price-drop email alerts ────────────────────────────────────────────
+      # Looks at listing_price_changes rows (populated by the
+      # track_price_change trigger) inserted in the last 24h.  Any row with
+      # a price drop ≥ 5% triggers an email to every user whose
+      # saved_searches match OR who saved that listing explicitly.  Idempotent
+      # - the price_drop_notifications table prevents duplicate sends.
+      - name: Send price-drop email alerts
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          PRICE_DROP_MIN_PCT: "5"
+          PRICE_DROP_WINDOW_HOURS: "24"
+        run: python scrapers/send_price_drop_alerts.py
+
+      # ── Geocoding - fill lat/lng for new listings so map pins are accurate ──────
+      # Nominatim's free tier enforces 1 req/sec - at 300/run we burn the full
+      # 8min cap.  Bumped to 12min + 500 listings/run to drain the backlog
+      # faster (Janglo Playwright now adds ~870 fresh listings per run).
+      - name: Geocode new listings (Nominatim - free, no API key)
+        continue-on-error: true
+        timeout-minutes: 12
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          GEOCODE_MAX_PER_RUN: "500"
+        run: python scrapers/geocode_listings.py
+
+      # ── Translations - translate Hebrew descriptions to EN/RU/AR/FR via DeepL ──
+      - name: Translate new listing descriptions (DeepL - skips if key not set)
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          DEEPL_API_KEY: ${{ secrets.DEEPL_API_KEY }}
+          DEEPL_MAX_PER_RUN: "300"
+        run: python scrapers/translate_descriptions.py
+
+      - name: Deactivate stale listings (verify source URLs)
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python scrapers/deactivate_stale.py
+
+      - name: Dedup listings (same source+city+price+rooms)
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python scrapers/dedup_listings.py
+
+      # Canonicalize city names so the dropdown / SEO landing pages don't
+      # re-fragment.  Scrapers write the same city under several spellings
+      # (Telegram "תל אביב" vs Yad2 "תל אביב יפו", OnMap Latin transliterations,
+      # "קריית"/"קרית"), and OnMap leaks foreign cities (Dubai, Alanya).  This
+      # merges variants into the canonical Yad2 name and deactivates foreign
+      # listings.  Idempotent — safe to run every scrape.
+      - name: Canonicalize city names (merge spelling variants, drop foreign)
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python scrapers/backfill_city_canonical.py --apply
+
+      - name: Generate AI listing summaries (Claude Haiku - skips if key not set)
+        continue-on-error: true
+        timeout-minutes: 20
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          AI_SUMMARY_BATCH_SIZE: "500"
+        run: python scrapers/generate_ai_summaries.py
+
+      - name: Freshness + price change report
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PRICE_CHANGE_STALE_DAYS: "45"
+        run: python scrapers/track_price_changes.py
+
+      - name: Refresh neighborhood_stats materialised view
+        continue-on-error: true
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python scrapers/refresh_neighborhood_stats.py
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scraper-logs-${{ github.run_id }}
+          path: |
+            scrapers/madlan_playwright_log.txt
+            scrapers/yad2_playwright_log.txt
+            scrapers/yad2_api_scraper_log.txt
+            scrapers/jpost_scraper_log.txt
+            scrapers/facebook_groups_log.txt
+            scrapers/facebook_marketplace_log.txt
+            scrapers/apify_facebook_log.txt
+            scrapers/janglo_scraper_log.txt
+            scrapers/onmap_scraper_log.txt
+            scrapers/komo_scraper_log.txt
+            scrapers/telegram_scraper_log.txt
+            scrapers/geocode_log.txt
+            scrapers/alerts_log.txt
+            scrapers/deactivate_stale_log.txt
+            scrapers/dedup_log.txt
+            scrapers/ai_summaries_log.txt
+            scrapers/price_changes_log.txt
+            scrapers/price_drop_alerts_log.txt
+            scrapers/whatsapp_alerts_log.txt
+          if-no-files-found: warn
+          retention-days: 14
+

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.2" baseProfile="tiny-ps" viewBox="0 0 200 200">
+<title>BebKey</title>
+<rect width="200" height="200" rx="44" fill="#1E40AF"/>
+<rect x="31" y="27" width="34" height="108" rx="17" fill="#FAFAF8"/>
+<circle cx="86" cy="126" r="39" fill="none" stroke="#FAFAF8" stroke-width="27"/>
+<line x1="120" y1="126" x2="166" y2="84" stroke="#F59E0B" stroke-width="30" stroke-linecap="round"/>
+<line x1="120" y1="126" x2="166" y2="168" stroke="#F59E0B" stroke-width="30" stroke-linecap="round"/>
+</svg>

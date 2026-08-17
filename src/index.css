@@ -1,0 +1,208 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Kill page-level horizontal scroll on mobile (the "left-right jitter").
+   A stray element wider than the viewport (a wide table, a long unbroken
+   string) no longer shifts the whole page — it's clipped here, and wide
+   content that needs to scroll does so inside its own overflow-x container.
+   `clip` (not `hidden`) so it doesn't create a scroll box that breaks
+   position: sticky on the navbar. */
+html, body {
+  overflow-x: clip;
+  max-width: 100%;
+}
+
+#root {
+  min-height: 100vh;
+  overflow-x: clip;
+}
+
+/* ────────────────────────────────────────────────────────────────────────
+   Accessibility Widget - physical adjustments per IS 5568.
+   Classes are toggled on <html> by src/components/AccessibilityWidget.tsx.
+   ──────────────────────────────────────────────────────────────────────── */
+
+/* Font scaling.  Browser default is 16px → we scale the root so rem-based
+   utilities (Tailwind) propagate. */
+html.a11y-font-sm { font-size: 14px; }    /* 87.5% */
+html.a11y-font-lg { font-size: 18px; }    /* 112.5% */
+html.a11y-font-xl { font-size: 21px; }    /* 131%   */
+
+/* High-contrast - force pure-black text on pure-white background everywhere.
+   The brand-blue navbar stays brand-blue (high-contrast white on blue is
+   already AAA), but everything else flattens. */
+html.a11y-contrast,
+html.a11y-contrast body {
+  background: #ffffff !important;
+  color: #000000 !important;
+}
+html.a11y-contrast *:not(nav):not(nav *):not(#a11y-panel):not(#a11y-panel *) {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border-color: #000000 !important;
+}
+html.a11y-contrast a:not(nav a):not(#a11y-panel a) {
+  color: #0000ee !important;
+  text-decoration: underline !important;
+}
+
+/* Negative / inverted colours.  filter:invert flips colours of all pixels -
+   images get inverted too, so we double-invert them back. */
+html.a11y-invert {
+  filter: invert(100%) hue-rotate(180deg);
+}
+html.a11y-invert img,
+html.a11y-invert video,
+html.a11y-invert picture,
+html.a11y-invert canvas,
+html.a11y-invert iframe,
+html.a11y-invert [style*="background-image"] {
+  filter: invert(100%) hue-rotate(180deg);
+}
+
+/* Grayscale */
+html.a11y-grayscale {
+  filter: grayscale(100%);
+}
+
+/* Highlight links - yellow background + bold underline */
+html.a11y-links a {
+  background-color: #fff59d !important;
+  color: #000000 !important;
+  text-decoration: underline !important;
+  text-decoration-thickness: 2px !important;
+  text-underline-offset: 2px !important;
+  padding: 1px 2px;
+  border-radius: 2px;
+}
+
+/* Highlight headings - outlined and bumped */
+html.a11y-heads :where(h1, h2, h3, h4, h5, h6) {
+  outline: 2px dashed #1E40AF !important;
+  outline-offset: 4px !important;
+  font-weight: 800 !important;
+}
+
+/* Stop motion - disable all animations + transitions everywhere */
+html.a11y-no-motion *,
+html.a11y-no-motion *::before,
+html.a11y-no-motion *::after {
+  animation: none !important;
+  animation-duration: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+
+/* Larger cursor - embedded SVG arrow at 32x32 */
+html.a11y-cursor,
+html.a11y-cursor * {
+  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><path d='M4 2 L4 28 L11 22 L15 30 L19 28 L15 20 L24 20 Z' fill='black' stroke='white' stroke-width='1.5'/></svg>") 0 0, auto !important;
+}
+html.a11y-cursor a,
+html.a11y-cursor button,
+html.a11y-cursor [role="button"] {
+  cursor: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><path d='M12 4 L12 16 L8 16 L8 24 L20 24 L20 16 L16 16 L16 4 Z' fill='black' stroke='white' stroke-width='1.5'/></svg>") 8 0, pointer !important;
+}
+
+/* Readable font - geometric sans-serif everywhere + roomy letter-spacing.
+   Excludes the bk monogram SVG (which uses real geometry, not text). */
+html.a11y-readable * {
+  font-family: 'Arial', 'Helvetica', sans-serif !important;
+  letter-spacing: 0.04em !important;
+  word-spacing: 0.1em !important;
+  line-height: 1.6 !important;
+}
+
+/* Reading guide - JS appends a horizontal band element following the cursor.
+   No CSS rules needed for the band itself (inline-styled), but we disable
+   hover effects so the user can focus on reading. */
+html.a11y-guide *:hover {
+  transition: none !important;
+}
+
+/* ─── Editorial typography for /guides/:slug pages ────────────────────────
+   Long-form articles benefit from a softer body font, drop cap on the lead
+   paragraph, and tighter list bullets.  Scoped to .guide-body so it doesn't
+   leak into other markdown surfaces. */
+.guide-body {
+  font-feature-settings: 'kern', 'liga', 'onum';
+}
+
+/* Lead paragraph - larger but no drop cap (the drop cap was too clever
+   and broke on short opening words like "If", "I", "An"). */
+.guide-body > p:first-of-type {
+  font-size: 1.18em;
+  color: #374151;
+  font-weight: 400;
+  line-height: 1.65;
+  margin-block-end: 1.5em;
+}
+
+.guide-body ul,
+.guide-body ol {
+  padding-inline-start: 1.4em;
+}
+
+.guide-body ul li::marker {
+  color: #1A56DB;
+}
+
+.guide-body hr {
+  border: 0;
+  height: 1px;
+  background: linear-gradient(to right, transparent, #e5e7eb, transparent);
+  margin: 2.5em 0;
+}
+
+/* Table styling - prose plugin defaults are minimal, this gives us a
+   real editorial-looking table with borders and zebra stripes. */
+.guide-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5em 0;
+  font-size: 0.95em;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.guide-body thead {
+  background: #f0f4ff;
+}
+
+.guide-body th {
+  padding: 0.75em 1em;
+  text-align: start;
+  font-weight: 600;
+  color: #1A56DB;
+  border-bottom: 2px solid #c7d2fe;
+}
+
+.guide-body td {
+  padding: 0.7em 1em;
+  border-bottom: 1px solid #f3f4f6;
+  color: #374151;
+}
+
+.guide-body tbody tr:nth-child(even) {
+  background: #fafbff;
+}
+
+.guide-body tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Inline code in tables stays readable */
+.guide-body td code,
+.guide-body th code {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+}

@@ -1,0 +1,49 @@
+name: FB cookie auto-refresh
+
+# Keeps FACEBOOK_COOKIES alive automatically. Runs ~1h before each heavy scrape
+# (Sun/Tue/Thu). Cheap on the common path: it just VALIDATES the current cookies
+# and exits if they're still good. It only attempts a password re-login (through
+# the residential proxy) when the session is actually dead, and if Facebook
+# throws a 2FA/checkpoint it can't pass, it sends a Telegram alert instead.
+#
+# Required repo secrets for the auto-login fallback:
+#   FB_EMAIL, FB_PASSWORD   - the dummy account credentials
+#   GH_PAT                  - PAT with "Secrets: write" on this repo (to update FACEBOOK_COOKIES)
+# Optional: TELEGRAM_BOT_TOKEN + TELEGRAM_ADMIN_CHAT_ID for failure alerts.
+# Without FB_EMAIL/FB_PASSWORD it still validates + alerts (no auto-relogin).
+
+on:
+  schedule:
+    - cron: '0 2 * * 0,2,4'   # 05:00 IL, ~1h before the heavy run
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Python packages
+        run: pip install -r scrapers/requirements.txt
+      - name: Install Playwright Chromium + OS deps
+        timeout-minutes: 8
+        run: python -m playwright install --with-deps chromium
+      - name: Install Xvfb
+        run: sudo apt-get install -y xvfb
+
+      - name: Validate / refresh Facebook cookies
+        env:
+          FACEBOOK_COOKIES: ${{ secrets.FACEBOOK_COOKIES }}
+          FB_EMAIL: ${{ secrets.FB_EMAIL }}
+          FB_PASSWORD: ${{ secrets.FB_PASSWORD }}
+          GH_PAT: ${{ secrets.GH_PAT }}
+          WEBSHARE_PROXY_HOST: ${{ secrets.WEBSHARE_PROXY_HOST }}
+          WEBSHARE_PROXY_USER: ${{ secrets.WEBSHARE_PROXY_USER }}
+          WEBSHARE_PROXY_PASS: ${{ secrets.WEBSHARE_PROXY_PASS }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_ADMIN_CHAT_ID: ${{ secrets.TELEGRAM_ADMIN_CHAT_ID }}
+          DISPLAY: ":99"
+        run: xvfb-run --auto-servernum python scrapers/auto_refresh_fb_cookies.py

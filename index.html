@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Favicons - bk monogram, multi-format for max browser compatibility.
+         Query strings bust the browser cache so old purple-lightning favicons
+         from the placeholder design get evicted on next visit. -->
+    <link rel="icon"          type="image/svg+xml" href="/favicon.svg?v=6" />
+    <link rel="icon"          type="image/png" sizes="32x32" href="/favicon-32x32.png?v=6" />
+    <link rel="icon"          type="image/png" sizes="16x16" href="/favicon-16x16.png?v=6" />
+    <link rel="shortcut icon" type="image/x-icon"           href="/favicon.ico?v=6" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=6" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Performance: preconnect to external origins used at runtime.
+         We use system-ui fonts (no Google Fonts), so don't waste a
+         connection on fonts.googleapis.com / fonts.gstatic.com. -->
+    <link rel="preconnect" href="https://wsrv.nl" />
+    <link rel="preconnect" href="https://fzuadufzqazrvwarnely.supabase.co" crossorigin />
+    <link rel="dns-prefetch" href="https://tile.openstreetmap.org" />
+    <link rel="dns-prefetch" href="https://nominatim.openstreetmap.org" />
+    <link rel="dns-prefetch" href="https://www.googletagmanager.com" />
+    <title>BebKey - Israel Real Estate, All in One Place</title>
+
+    <!-- SEO -->
+    <meta name="description" content="BebKey aggregates every property listing in Israel - apartments, houses, rentals and new projects - in one searchable platform for buyers and agents." />
+    <meta name="keywords" content="Israel real estate, apartments Israel, rent Israel, buy apartment Israel, נדלן, דירות למכירה, דירות להשכרה" />
+    <!-- NO static canonical here. This index.html is served for EVERY SPA route
+         via the catch-all rewrite, so a hardcoded canonical pointed every
+         listing/landing page at the homepage — Google then dropped them as
+         "Duplicate, Google chose different canonical". The per-page canonical is
+         set at runtime by src/hooks/useSeo.ts. Do not re-add a site-wide one. -->
+
+    <!-- No static hreflang. BebKey serves all 5 languages at the SAME URL
+         (localStorage-based switch, no per-language URLs), so hreflang — which
+         requires a distinct URL per language — doesn't apply, and a hardcoded
+         block here wrongly told Google that every route's language alternates
+         live at the homepage. Proper hreflang would need per-language URLs
+         (future work). -->
+
+    <!-- RSS feed - auto-generated weekly by scripts/generate_rss.py.
+         Feedly/Inoreader/Telegram-RSS-bots/aggregators pick this up so
+         BebKey content reaches users who never visit Google. -->
+    <link rel="alternate" type="application/rss+xml" title="BebKey - Latest listings + market reports" href="/feed.xml" />
+
+    <!-- Search-engine ownership verification.  Belt + suspenders: HTML file
+         lives at /googleea70cfce5878bf9d.html (Google's recommended method)
+         AND the meta tag is here as a fallback that survives even if the
+         file is accidentally deleted. -->
+    <meta name="google-site-verification" content="qhxUlHzSYowx82STldD5rFIFYPZW6D9SfAiScSMPe58" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://www.bebkey.com/" />
+    <meta property="og:title" content="BebKey - Israel Real Estate, All in One Place" />
+    <meta property="og:description" content="Search every property listing in Israel. Buy, rent, or list - BebKey makes Israeli real estate simple." />
+    <meta property="og:image" content="https://www.bebkey.com/og-image.png" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="he_IL" />
+
+    <!-- Site-wide structured data: tells Google what the site is and gives it
+         a sitelinks-searchbox.  Per-page schema (RealEstateListing, etc.)
+         lives in the individual page components. -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "https://www.bebkey.com/#organization",
+          "name": "BebKey",
+          "alternateName": ["בבקי", "BebKey Real Estate"],
+          "url": "https://www.bebkey.com/",
+          "logo": {
+            "@type": "ImageObject",
+            "url": "https://www.bebkey.com/icon-512.png",
+            "width": 512,
+            "height": 512
+          },
+          "description": "Israeli real estate aggregator — every property listing from Yad2, OnMap, Madlan, Janglo, Komo, Facebook and Telegram in one searchable platform. Available in Hebrew, English, Russian, Arabic and French.",
+          "areaServed": {
+            "@type": "Country",
+            "name": "Israel"
+          },
+          "knowsLanguage": ["he", "en", "ru", "ar", "fr"],
+          "contactPoint": {
+            "@type": "ContactPoint",
+            "email": "support@bebkey.com",
+            "contactType": "Customer Support",
+            "availableLanguage": ["Hebrew", "English", "Russian", "Arabic", "French"]
+          },
+          "sameAs": [
+            "https://www.facebook.com/profile.php?id=61591911783347",
+            "https://www.instagram.com/bebkey_official/",
+            "https://www.tiktok.com/@bebkey_official",
+            "https://x.com/bebkey_official"
+          ]
+        },
+        {
+          "@type": "WebSite",
+          "@id": "https://www.bebkey.com/#website",
+          "url": "https://www.bebkey.com/",
+          "name": "BebKey",
+          "publisher": { "@id": "https://www.bebkey.com/#organization" },
+          "inLanguage": ["he", "en", "ru", "ar", "fr"],
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": "https://www.bebkey.com/search?keyword={search_term_string}",
+            "query-input": "required name=search_term_string"
+          }
+        }
+      ]
+    }
+    </script>
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="BebKey - Israel Real Estate" />
+    <meta name="twitter:description" content="Search every property listing in Israel. Buy, rent, or list." />
+    <meta name="twitter:image" content="https://www.bebkey.com/og-image.png" />
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#1d4ed8" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="BebKey" />
+
+    <!-- LLM crawler discovery — https://llmstxt.org/ / Anthropic proposed
+         standard. Machine-readable factual summary at /llms.txt so
+         ChatGPT/Claude/Perplexity/Gemini can quote us accurately. -->
+    <link rel="alternate" type="text/plain" title="LLM discovery" href="/llms.txt" />
+
+    <!-- (Site-wide WebSite + Organization schema already declared above;
+         no second block needed — it was a duplicate that added no info.) -->
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <!-- PWA service worker registration -->
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {})
+        })
+      }
+    </script>
+  </body>
+</html>
